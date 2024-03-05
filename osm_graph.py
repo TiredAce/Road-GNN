@@ -89,11 +89,9 @@ class osm_graph_from_box:
             single_edges.add(geo_edges[i][0])
 
         self.orig_edges = list(single_edges)
-        # print(self.orig_edges[0])
-        # print(self.orig_edges)
-        self.orig_num_edges = len(self.orig_edges)
-        # print(self.orig_num_edges)
 
+        self.orig_num_edges = len(self.orig_edges)
+        
         self.orig_nodes = dict()
         for i in range(self.orig_num_edges):
             road_info = self.orig_edges[i]
