@@ -11,6 +11,7 @@ import math
 import tools as tl
 from sklearn.metrics import f1_score
 from sklearn import preprocessing
+from scipy.sparse import load_npz
 
 import torch
 import torch.nn as nn
@@ -21,6 +22,7 @@ from torch.utils.data import DataLoader, TensorDataset
 class MLPModel(nn.Module):
     
     def __init__(self,
+                 input_units,
                  layer_units,
                  output_units,
                  dropout_prob = 0.6,
@@ -31,12 +33,13 @@ class MLPModel(nn.Module):
                  ZCA_iteration = 10,
                  ZCA_lam = 0.5,
                  ZCA_temp = 10,
-                 seed = 1):
+                 seed = 42):
         
         super(MLPModel, self).__init__()
 
         torch.manual_seed(seed)
         
+        self.input_units = input_units
         self.output_units = output_units
         self.residual = residual
         self.ZCA_iteration = ZCA_iteration
@@ -55,11 +58,11 @@ class MLPModel(nn.Module):
         self.ZCA_mean_list.append(torch.zeros(1, layer_units[0]))
         self.ZCA_C_list.append(torch.eye(layer_units[0]))
         
-        dense_layer = nn.Linear(layer_units[0], layer_units[0], bias=False)
+        dense_layer = nn.Linear(input_units, layer_units[0], bias=False)
         self.dense_layers.append(dense_layer)
-        
+     
         for l in range(1, len(layer_units)):
-            
+
             self.ZCA_mean_list.append(torch.zeros(1, layer_units[l]))
             self.ZCA_C_list.append(torch.eye(layer_units[l]))
             
@@ -86,21 +89,23 @@ class MLPModel(nn.Module):
         if self.batch_normalization == 'ZCA':
             if training:
                 X, ZCA_mean, ZCA_C = tl.Newton_ZCA_for_features(x, temp = self.ZCA_temp, T = self.ZCA_iteration)
-                self.ZCA_mean_list[0] = (1 - self.lam) * self.ZCA_mean_list[0] + self.lam * ZCA_mean
-                self.ZCA_C_list[0] = (1 - self.lam) * self.ZCA_C_list[0] + self.lam * ZCA_C
+                self.ZCA_mean_list[0] = (1 - self.lam) * self.ZCA_mean_list[0].to(x) + self.lam * ZCA_mean
+                self.ZCA_C_list[0] = (1 - self.lam) * self.ZCA_C_list[0].to(x) + self.lam * ZCA_C
             
             else:
-                x = torch.matmul(x - self.ZCA_mean_list[0], self.ZCA_C_list[0])
+                x = torch.matmul(x - self.ZCA_mean_list[0].to(x), self.ZCA_C_list[0].to(x))
+            print("NO")
                 
         elif self.batch_normalization == 'Schur_ZCA':
-            if training:
-                x, Z_mean, ZCA_C = tl.Schur_Newton_ZCA_for_features(x, temp = self.ZCA_temp, T = self.ZCA_iteration)
 
-                self.ZCA_mean_list[0] = (1 - self.lam) * self.ZCA_mean_list[0] + self.lam * ZCA_mean
-                self.ZCA_C_list[0] = (1 - self.lam) * self.ZCA_C_list[0] + self.lam * ZCA_C
+            if training:
+                x, ZCA_mean, ZCA_C = tl.Schur_Newton_ZCA_for_features(x, temp = self.ZCA_temp, T = self.ZCA_iteration)
+
+                self.ZCA_mean_list[0] = (1 - self.lam) * self.ZCA_mean_list[0].to(x) + self.lam * ZCA_mean
+                self.ZCA_C_list[0] = (1 - self.lam) * self.ZCA_C_list[0].to(x) + self.lam * ZCA_C
             
             else:
-                x = torch.matmul(x - self.ZCA_mean_list[0], self.ZCA_C_list[0])
+                x = torch.matmul(x - self.ZCA_mean_list[0].to(x), self.ZCA_C_list[0].to(x))
                 
         elif self.batch_normalization == 'BN':
             x = nn.BatchNorm1d(x.size(1))(x)
@@ -112,7 +117,7 @@ class MLPModel(nn.Module):
         deep_copy_list.append(x.clone())
         
         for l in range(1, len(self.dense_layers) - 1):
-            
+            print("NO")
             h = x.clone()
             
             h = self.dense_layers[l](h)
@@ -128,10 +133,11 @@ class MLPModel(nn.Module):
             
                 else:
                     h = torch.matmul(h - self.ZCA_mean_list[l], self.ZCA_C_list[l])
+
                     
             elif self.batch_normalization == 'Schur_ZCA':
                 if training:
-                    x, Z_mean, ZCA_C = tl.Schur_Newton_ZCA_for_features(x, temp = self.ZCA_temp, T = self.ZCA_iteration)
+                    x, ZCA_mean, ZCA_C = tl.Schur_Newton_ZCA_for_features(x, temp = self.ZCA_temp, T = self.ZCA_iteration)
 
                     self.ZCA_mean_list[l] = (1 - self.lam) * self.ZCA_mean_list[l] + self.lam * ZCA_mean
                     self.ZCA_C_list[l] = (1 - self.lam) * self.ZCA_C_list[l] + self.lam * ZCA_C
@@ -151,26 +157,29 @@ class MLPModel(nn.Module):
         x = self.dense_layers[-1](x)
         
         if self.batch_normalization == 'ZCA':
-            if training:
-                X, ZCA_mean, ZCA_C = tl.Newton_ZCA_for_features(x, temp = self.ZCA_temp, T = self.ZCA_iteration)
-                self.ZCA_mean_list[-1] = (1 - self.lam) * self.ZCA_mean_list[-1] + self.lam * ZCA_mean
-                self.ZCA_C_list[-1] = (1 - self.lam) * self.ZCA_C_list[-1] + self.lam * ZCA_C
+            # if training:
+            #     X, ZCA_mean, ZCA_C = tl.Newton_ZCA_for_features(x, temp = self.ZCA_temp, T = self.ZCA_iteration)
+            #     self.ZCA_mean_list[-1] = (1 - self.lam) * self.ZCA_mean_list[-1] + self.lam * ZCA_mean
+            #     self.ZCA_C_list[-1] = (1 - self.lam) * self.ZCA_C_list[-1] + self.lam * ZCA_C
             
-            else:
-                x = torch.matmul(x - self.ZCA_mean_list[-1], self.ZCA_C_list[-1])
+            # else:
+            #     x = torch.matmul(x - self.ZCA_mean_list[-1], self.ZCA_C_list[-1])
+
+            print("NO")
                 
         elif self.batch_normalization == 'Schur_ZCA':
             if training:
-                x, Z_mean, ZCA_C = tl.Schur_Newton_ZCA_for_features(x, temp = self.ZCA_temp, T = self.ZCA_iteration)
+                x, ZCA_mean, ZCA_C = tl.Schur_Newton_ZCA_for_features(x, temp = self.ZCA_temp, T = self.ZCA_iteration)
 
-                self.ZCA_mean_list[-1] = (1 - self.lam) * self.ZCA_mean_list[-1] + self.lam * ZCA_mean
-                self.ZCA_C_list[-1] = (1 - self.lam) * self.ZCA_C_list[-1] + self.lam * ZCA_C
+                self.ZCA_mean_list[-1] = (1 - self.lam) * self.ZCA_mean_list[-1].to(x) + self.lam * ZCA_mean
+                self.ZCA_C_list[-1] = (1 - self.lam) * self.ZCA_C_list[-1].to(x) + self.lam * ZCA_C
             
             else:
-                x = torch.matmul(x - self.ZCA_mean_list[-1], self.ZCA_C_list[-1])
+                x = torch.matmul(x - self.ZCA_mean_list[-1].to(x), self.ZCA_C_list[-1].to(x))
                 
         elif self.batch_normalization == 'BN':
             x = nn.BatchNorm1d(x.size(1))(x)
+            print("NO")
             
         x = self.activation(x)
         
@@ -195,12 +204,19 @@ def unsupervised_learning(features,
                           alpha=1.0,
                           beta=1.0,
                           L2=0.01):
+
+    model = model.cuda()
+    anchor_indexes = anchor_indexes.cuda()
+    augmented_indexes = augmented_indexes.cuda()
+    features = features.cuda()
     
     optimizer = optim.Adam(model.parameters(), lr=learning_rate, weight_decay=L2)
         
     train_loss_results = []
     
-    feat_ds = TensorDataset(torch.tensor(anchor_indexes), torch.tensor(augmented_indexes))
+    feat_ds = TensorDataset(anchor_indexes.clone().detach(), 
+                            augmented_indexes.clone().detach())
+    
     feat_dl = DataLoader(feat_ds, batch_size=batch_size, shuffle=True)
     
     for epoch in range(num_epochs):
@@ -209,44 +225,49 @@ def unsupervised_learning(features,
                 
         for anc_ind, aug_ind in feat_dl:
         
-            optimizer.zero_grad()
             
-            y_pred_list = model(features[anc_ind])
-            true_pred_list = model(features[aug_ind])
+            
+            y_pred_list = model(features[anc_ind], training = True)
+            true_pred_list = model(features[aug_ind], training = True)
                 
             loss_value = 0.0
                 
             for y_pred, true_pred in zip(y_pred_list, true_pred_list):
+                # print(y_pred.shape)
+                # print(true_pred.shape)
+                # print("----")
                 y_pred = y_pred / (torch.norm(y_pred, dim=1, keepdim=True) + 1e-8)
                 true_pred = true_pred / (torch.norm(true_pred, dim=1, keepdim=True) + 1e-8)
+
+                loss_value += tl.loss_dot_product_v2(y_pred=y_pred, true_pred=true_pred, temperature=temperature)
                 
-                if contrast_loss == 'distance':
-                    loss_value += tl.loss_dot_product_v2(y_pred=y_pred, true_pred=true_pred, temperature=temperature)
+                # if contrast_loss == 'distance':
+                    # loss_value += tl.loss_dot_product_v2(y_pred=y_pred, true_pred=true_pred, temperature=temperature)
                         
-                elif contrast_loss == 'signal_distance':
-                    loss_value += tl.loss_dot_product_v2(y_pred=y_pred, true_pred=true_pred, axis=0, temperature=temperature)
+                # elif contrast_loss == 'signal_distance':
+                #     loss_value += tl.loss_dot_product_v2(y_pred=y_pred, true_pred=true_pred, axis=0, temperature=temperature)
                         
-                elif contrast_loss == 'contrastive':
-                    loss_value += tl.loss_dot_product_v3(y_pred=y_pred, true_pred=true_pred, temperature=temperature)
+                # elif contrast_loss == 'contrastive':
+                #     loss_value += tl.loss_dot_product_v3(y_pred=y_pred, true_pred=true_pred, temperature=temperature)
                         
-                elif contrast_loss == 'signal_contrastive':
-                    loss_value += tl.loss_dot_product_v3(y_pred=y_pred, true_pred=true_pred, axis=0, temperature=temperature)
+                # elif contrast_loss == 'signal_contrastive':
+                #     loss_value += tl.loss_dot_product_v3(y_pred=y_pred, true_pred=true_pred, axis=0, temperature=temperature)
                         
-                elif contrast_loss == 'distance+auto-correlation':
-                    loss_value += (alpha * tl.loss_dot_product_v2(y_pred=y_pred, true_pred=true_pred, temperature=temperature) + \
-                                   beta * tl.auto_correlation(y_pred=y_pred, lam=lam) + tl.auto_correlation(y_pred=true_pred, lam=lam))
+                # elif contrast_loss == 'distance+auto-correlation':
+                #     loss_value += (alpha * tl.loss_dot_product_v2(y_pred=y_pred, true_pred=true_pred, temperature=temperature) + \
+                #                    beta * tl.auto_correlation(y_pred=y_pred, lam=lam) + tl.auto_correlation(y_pred=true_pred, lam=lam))
                             
-                elif contrast_loss == 'signal_distance+auto-correlation':
-                    loss_value += (alpha * tl.loss_dot_product_v2(y_pred=y_pred, true_pred=true_pred, axis=0, temperature=temperature) + \
-                                   beta * tl.auto_correlation(y_pred=y_pred, lam=lam) + tl.auto_correlation(y_pred=true_pred, lam=lam))
+                # elif contrast_loss == 'signal_distance+auto-correlation':
+                #     loss_value += (alpha * tl.loss_dot_product_v2(y_pred=y_pred, true_pred=true_pred, axis=0, temperature=temperature) + \
+                #                    beta * tl.auto_correlation(y_pred=y_pred, lam=lam) + tl.auto_correlation(y_pred=true_pred, lam=lam))
                             
-                elif contrast_loss == 'cross-correlation+auto-correlation':
-                    loss_value += (alpha * tl.cross_correlation(y_pred=y_pred, true_pred=true_pred, lam=lam) + \
-                                   beta * tl.auto_correlation(y_pred=y_pred, lam=lam) + tl.auto_correlation(y_pred=true_pred, lam=lam))
+                # elif contrast_loss == 'cross-correlation+auto-correlation':
+                #     loss_value += (alpha * tl.cross_correlation(y_pred=y_pred, true_pred=true_pred, lam=lam) + \
+                #                    beta * tl.auto_correlation(y_pred=y_pred, lam=lam) + tl.auto_correlation(y_pred=true_pred, lam=lam))
                             
-                elif contrast_loss == 'cross-correlation':
-                    loss_value += tl.cross_correlation(y_pred=y_pred, true_pred=true_pred, lam=lam)
-                
+                # elif contrast_loss == 'cross-correlation':
+                #     loss_value += tl.cross_correlation(y_pred=y_pred, true_pred=true_pred, lam=lam)
+            optimizer.zero_grad()
             loss_value.backward()
             optimizer.step()
             
@@ -262,154 +283,180 @@ def unsupervised_learning(features,
     return logits[0]
 
 
+def get_args():
+    parser = argparse.ArgumentParser()
 
-parser = argparse.ArgumentParser()
-
-parser.add_argument(
-        '-d', 
-        '--dataset',
+    parser.add_argument(
+            '-d', 
+            '--dataset',
+            type = str,
+            default = 'Xian')
+    
+    parser.add_argument(
+        '--dataset-dir',
         type = str,
-        default = 'Cora')
+        default='dataset')
 
-parser.add_argument(
-        '--alpha',
-        type = float,
-        default = 1.0)
+    parser.add_argument(
+            '--alpha',
+            type = float,
+            default = 1.0)
 
-parser.add_argument(
-        '--beta',
-        type = float,
-        default = 1.0)
+    parser.add_argument(
+            '--beta',
+            type = float,
+            default = 1.0)
 
-parser.add_argument(
-        '-cl', 
-        '--contrast-loss',
-        type = str,
-        default = 'distance')
+    parser.add_argument(
+            '-cl', 
+            '--contrast-loss',
+            type = str,
+            default = 'distance')
 
-parser.add_argument(
-        '-la',
-        '--lam',
-        type = float,
-        default = 0.0)
+    parser.add_argument(
+            '-la',
+            '--lam',
+            type = float,
+            default = 0.0)
 
 
-parser.add_argument(
-        '-t',
-        '--temperature',
-        type = float,
-        default = 1.0)
+    parser.add_argument(
+            '-t',
+            '--temperature',
+            type = float,
+            default = 1.0)
 
-parser.add_argument(
-        '-r',
-        '--num-run',
-        type = int,
-        default = 1)
+    parser.add_argument(
+            '-r',
+            '--num-run',
+            type = int,
+            default = 1)
 
-parser.add_argument(
-        '-bs',
-        '--batch-size',
-        type = int,
-        default = 2048) #65536
+    parser.add_argument(
+            '-bs',
+            '--batch-size',
+            type = int,
+            default = 2048) #65536
 
-parser.add_argument(
-        '-zi',
-        '--ZCA-iteration',
-        type = int,
-        default = 4)
+    parser.add_argument(
+            '-zi',
+            '--ZCA-iteration',
+            type = int,
+            default = 4)
 
-parser.add_argument(
-        '-zt',
-        '--ZCA-temp',
-        type = float,
-        default = 0.05)
+    parser.add_argument(
+            '-zt',
+            '--ZCA-temp',
+            type = float,
+            default = 0.05)
 
-parser.add_argument(
-        '-zl',
-        '--ZCA-lam',
-        type = float,
-        default = 0.0)
+    parser.add_argument(
+            '-zl',
+            '--ZCA-lam',
+            type = float,
+            default = 0.0)
 
-parser.add_argument(
-        '-bn', 
-        '--batch-normalization',
-        type = str,
-        default = 'Schur_ZCA') # None, BN, ZCA, Schur_ZCA
+    parser.add_argument(
+            '-bn', 
+            '--batch-normalization',
+            type = str,
+            default = 'Schur_ZCA') # None, BN, ZCA, Schur_ZCA
 
-parser.add_argument(
-        '-pe',
-        '--pretext-num-epochs',
-        type = int,
-        default = 70)
+    parser.add_argument(
+            '-pe',
+            '--pretext-num-epochs',
+            type = int,
+            default = 70)
 
-parser.add_argument(
-        '-de',
-        '--downstream-num-epochs',
-        type = int,
-        default = 3000)
+    parser.add_argument(
+            '-pu',
+            '--pretext-hidden-units',
+            nargs='+', 
+            type=int,
+            default = [512])
 
-parser.add_argument(
-        '-pu',
-        '--pretext-hidden-units',
-        nargs='+', 
-        type=int,
-        default = [512])
+    parser.add_argument(
+            '-pt',
+            '--pretext-output-units',
+            type = int,
+            default = 256)
 
-parser.add_argument(
-        '-pt',
-        '--pretext-output-units',
-        type = int,
-        default = 256)
+    parser.add_argument(
+            '-po',
+            '--pretext-dropout',
+            type = float,
+            default = 0.)
 
-parser.add_argument(
-        '-po',
-        '--pretext-dropout',
-        type = float,
-        default = 0.)
+    parser.add_argument(
+            '-pL',
+            '--pretext-L2',
+            type = float,
+            default = 0.)
 
-parser.add_argument(
-        '-do',
-        '--downstream-dropout',
-        type = float,
-        default = 0.5)
+    parser.add_argument(
+            '-pl',
+            '--pretext-learning-rate',
+            type = float,
+            default = 0.001)
+    
+    return parser.parse_args()
 
-parser.add_argument(
-        '-pL',
-        '--pretext-L2',
-        type = float,
-        default = 0.)
 
-parser.add_argument(
-        '-dL',
-        '--downstream-L2',
-        type = float,
-        default = 0.001)
+if __name__ == '__main__':
+    """
+    Input Data
 
-parser.add_argument(
-        '-pl',
-        '--pretext-learning-rate',
-        type = float,
-        default = 0.001)
+    anchor_indexes:
+    augmented_indexes:
+    features
 
-parser.add_argument(
-        '-dl',
-        '--downstream-learning-rate',
-        type = float,
-        default = 0.001)
+    """
+    args = get_args()
 
-parser.add_argument(
-        '-y',
-        '--early-stopping',
-        type = int,
-        default = 200)
+    features_path = os.path.join(args.dataset_dir, args.dataset + '.npz')
+    anchor_indecies_path = os.path.join(args.dataset_dir, args.dataset + '_anchor_indexes.npy')
+    augmented_indecies_path = os.path.join(args.dataset_dir, args.dataset + '_augmented_indexes.npy')
 
-args = parser.parse_args()
+    features = load_npz(features_path).toarray()
+    anchor_indexes = torch.from_numpy(np.load(anchor_indecies_path))
+    augmented_indexes = torch.from_numpy(np.load(augmented_indecies_path))
 
-"""
-Input Data
+    features = torch.tensor(features, dtype=torch.float32)
+    anchor_indexes = anchor_indexes.to(torch.int32)
+    augmented_indexes = augmented_indexes.to(torch.int32)
 
-anchor_indexes:
-augmented_indexes:
-features
+    model = MLPModel(input_units = features.shape[1],
+                 layer_units = args.pretext_hidden_units,
+                 output_units = args.pretext_output_units,
+                 dropout_prob = args.pretext_dropout,
+                 L2 = args.pretext_L2,
+                 activation = F.relu,
+                 residual = True,
+                 batch_normalization = args.batch_normalization,
+                 ZCA_iteration = args.ZCA_iteration,
+                 ZCA_lam = args.ZCA_lam,
+                 ZCA_temp = args.ZCA_temp)
+    
+    print("Starting unsupervised learning!")
+    
+    representations = unsupervised_learning(features = features,
+                                        anchor_indexes = anchor_indexes,
+                                        augmented_indexes = augmented_indexes,
+                                        model = model,
+                                        contrast_loss = args.contrast_loss,
+                                        batch_size = args.batch_size,
+                                        lam = args.lam,
+                                        temperature = args.temperature,
+                                        num_epochs = args.pretext_num_epochs,
+                                        learning_rate = args.pretext_learning_rate,
+                                        alpha = args.alpha,
+                                        beta = args.beta)
+    
+    file_path = 'representations.pt'
 
-"""
+    torch.save(representations, file_path)
+
+    print("Save Successful~")
+
+
+

@@ -20,7 +20,8 @@ def loss_dot_product(y_pred, true_pred, size_splits=None, temperature=1, bias=1e
     return -torch.mean(torch.log(numerator / (denominator + bias) + bias))
 
 def loss_dot_product_v2(y_pred, true_pred, axis=1, temperature=1, bias=1e-8):
-    loss = 2 - 2 * torch.sum(y_pred * true_pred, dim=axis, keepdim=True) / (temperature * torch.norm(y_pred, dim=axis, keepdim=True) * torch.norm(true_pred, dim=axis, keepdim=True) + bias)
+    loss = 2 - 2 * torch.sum(y_pred * true_pred, dim=axis, keepdim=True) \
+        / (temperature * torch.norm(y_pred, dim=axis, keepdim=True) * torch.norm(true_pred, dim=axis, keepdim=True) + bias)
     return torch.mean(loss)
 
 def loss_dot_product_v3(y_pred, true_pred, axis=1, temperature=1, bias=1e-8):
@@ -143,7 +144,7 @@ def Schur_Newton_ZCA_for_features(X, T=5, temp=10, epsilon=1e-8):
 
     d = X.shape[-1]
     m = X.shape[0]
-    I = torch.eye(d)
+    I = torch.eye(d).to(X)
     
     # Calculate mean of input features
     mean = torch.mean(X, dim=0, keepdim=True)
@@ -167,7 +168,7 @@ def Schur_Newton_ZCA_for_features(X, T=5, temp=10, epsilon=1e-8):
     C = C / tr
     
     # Initialize whitening matrix
-    P = torch.eye(d)
+    P = torch.eye(d).to(X)
     
     for _ in range(T):
         # Compute C_T
