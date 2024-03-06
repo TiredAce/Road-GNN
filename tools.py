@@ -1,4 +1,6 @@
 import torch
+import numpy as np
+from scipy.sparse import csr_matrix, save_npz
 
 def loss_dot_product(y_pred, true_pred, size_splits=None, temperature=1, bias=1e-8):
     numerator = torch.exp(torch.sum(y_pred * true_pred, dim=1, keepdim=True) / temperature)
@@ -187,3 +189,24 @@ def Schur_Newton_ZCA_for_features(X, T=5, temp=10, epsilon=1e-8):
     transformed_X = torch.matmul(X_mean, C)
     
     return transformed_X, mean, C
+
+
+def get_positive_samples(matrix, threshold = 0.5):
+    anchor_indexes = []
+    augmented_indexes = []
+
+    coo_matrix = matrix.tocoo()
+
+    for row, col, val in zip(coo_matrix.row, coo_matrix.col, coo_matrix.data):
+        if row == col: continue
+        if val >= threshold:
+            anchor_indexes.append(row)
+            anchor_indexes.append(col)
+            augmented_indexes.append(col)
+            augmented_indexes.append(row)
+
+    anchor_indexes = np.array(anchor_indexes)
+    augmented_indexes = np.array(augmented_indexes)
+
+    return anchor_indexes, augmented_indexes
+

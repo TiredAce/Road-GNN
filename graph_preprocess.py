@@ -3,6 +3,7 @@ from sklearn.metrics.pairwise import cosine_similarity
 from scipy.sparse import csr_matrix, save_npz
 import argparse
 import os
+import numpy as np
 
 
 def get_args():
@@ -63,7 +64,8 @@ if __name__ == '__main__':
 
     graph.merge_road()
 
-    # graph.draw_merge_graph()
+
+    # t = graph.draw_merge_graph()
 
     graph.get_merged_adj_matrix()
 

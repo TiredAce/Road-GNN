@@ -187,10 +187,14 @@ class osm_graph_from_box:
         print("ERROR")
         return None
 
-    def draw_merge_graph(self):
+    def draw_merge_graph(self, label = None, only_label = None):
         """
         Draw the graph which is merged.
+
+        Input:
+        label - Road categories obtained after clustering
         """
+
         if self.is_merge == False:
             print("Must use merge_road function first.")
             return None
@@ -199,6 +203,14 @@ class osm_graph_from_box:
         nodes_data = {'geometry': []}
         edges_data = {}
         edges_geometry = []
+
+        if label is not None:
+            edge_colors = []
+            if only_label == None:
+                edge_colors = []
+                colormap = plt.cm.get_cmap('hsv')
+                num_colors = len(set(label))
+                selected_colors = [colormap(i / num_colors) for i in range(num_colors)]
         
         # Connect the road
         connected = [False for i in range(self.orig_num_edges)]
@@ -236,6 +248,15 @@ class osm_graph_from_box:
             edges_data[(i, i, i)] = {}
             edges_geometry.append(LineString(path))
 
+            if label is not None:
+                if only_label == None:
+                    edge_colors.append(selected_colors[label[self.orig_to_id[i]]])
+                else:
+                    if label[self.orig_to_id[i]] == only_label:
+                        edge_colors.append('red')
+                    else:
+                        edge_colors.append('white')
+
         node_list = list(node_set)
         for node in node_list:
             nodes_data['geometry'].append(Point(node))   
@@ -251,8 +272,10 @@ class osm_graph_from_box:
 
         self.new_G = ox.utils_graph.graph_from_gdfs(nodes_gdf, edges_gdf)
 
-        ox.plot_graph(self.new_G, node_size=10, edge_linewidth=0.5, node_color='green')
-
+        if label is None:
+            return ox.plot_graph(self.new_G, node_size=10, edge_linewidth=0.5, node_color='green')
+        else:
+            return ox.plot_graph(self.new_G, edge_color=edge_colors, node_size=0, edge_linewidth=0.5)
 
     def get_merged_adj_matrix(self):
         """

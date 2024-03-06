@@ -157,15 +157,13 @@ class MLPModel(nn.Module):
         x = self.dense_layers[-1](x)
         
         if self.batch_normalization == 'ZCA':
-            # if training:
-            #     X, ZCA_mean, ZCA_C = tl.Newton_ZCA_for_features(x, temp = self.ZCA_temp, T = self.ZCA_iteration)
-            #     self.ZCA_mean_list[-1] = (1 - self.lam) * self.ZCA_mean_list[-1] + self.lam * ZCA_mean
-            #     self.ZCA_C_list[-1] = (1 - self.lam) * self.ZCA_C_list[-1] + self.lam * ZCA_C
+            if training:
+                X, ZCA_mean, ZCA_C = tl.Newton_ZCA_for_features(x, temp = self.ZCA_temp, T = self.ZCA_iteration)
+                self.ZCA_mean_list[-1] = (1 - self.lam) * self.ZCA_mean_list[-1] + self.lam * ZCA_mean
+                self.ZCA_C_list[-1] = (1 - self.lam) * self.ZCA_C_list[-1] + self.lam * ZCA_C
             
-            # else:
-            #     x = torch.matmul(x - self.ZCA_mean_list[-1], self.ZCA_C_list[-1])
-
-            print("NO")
+            else:
+                x = torch.matmul(x - self.ZCA_mean_list[-1], self.ZCA_C_list[-1])
                 
         elif self.batch_normalization == 'Schur_ZCA':
             if training:
@@ -210,7 +208,7 @@ def unsupervised_learning(features,
     augmented_indexes = augmented_indexes.cuda()
     features = features.cuda()
     
-    optimizer = optim.Adam(model.parameters(), lr=learning_rate, weight_decay=L2)
+    optimizer = optim.Adam(model.parameters(), lr=learning_rate)
         
     train_loss_results = []
     
@@ -233,40 +231,39 @@ def unsupervised_learning(features,
             loss_value = 0.0
                 
             for y_pred, true_pred in zip(y_pred_list, true_pred_list):
-                # print(y_pred.shape)
-                # print(true_pred.shape)
-                # print("----")
+            
                 y_pred = y_pred / (torch.norm(y_pred, dim=1, keepdim=True) + 1e-8)
                 true_pred = true_pred / (torch.norm(true_pred, dim=1, keepdim=True) + 1e-8)
 
                 loss_value += tl.loss_dot_product_v2(y_pred=y_pred, true_pred=true_pred, temperature=temperature)
                 
-                # if contrast_loss == 'distance':
-                    # loss_value += tl.loss_dot_product_v2(y_pred=y_pred, true_pred=true_pred, temperature=temperature)
+                if contrast_loss == 'distance':
+                    loss_value += tl.loss_dot_product_v2(y_pred=y_pred, true_pred=true_pred, temperature=temperature)
                         
-                # elif contrast_loss == 'signal_distance':
-                #     loss_value += tl.loss_dot_product_v2(y_pred=y_pred, true_pred=true_pred, axis=0, temperature=temperature)
+                elif contrast_loss == 'signal_distance':
+                    loss_value += tl.loss_dot_product_v2(y_pred=y_pred, true_pred=true_pred, axis=0, temperature=temperature)
                         
-                # elif contrast_loss == 'contrastive':
-                #     loss_value += tl.loss_dot_product_v3(y_pred=y_pred, true_pred=true_pred, temperature=temperature)
+                elif contrast_loss == 'contrastive':
+                    loss_value += tl.loss_dot_product_v3(y_pred=y_pred, true_pred=true_pred, temperature=temperature)
                         
-                # elif contrast_loss == 'signal_contrastive':
-                #     loss_value += tl.loss_dot_product_v3(y_pred=y_pred, true_pred=true_pred, axis=0, temperature=temperature)
+                elif contrast_loss == 'signal_contrastive':
+                    loss_value += tl.loss_dot_product_v3(y_pred=y_pred, true_pred=true_pred, axis=0, temperature=temperature)
                         
-                # elif contrast_loss == 'distance+auto-correlation':
-                #     loss_value += (alpha * tl.loss_dot_product_v2(y_pred=y_pred, true_pred=true_pred, temperature=temperature) + \
-                #                    beta * tl.auto_correlation(y_pred=y_pred, lam=lam) + tl.auto_correlation(y_pred=true_pred, lam=lam))
+                elif contrast_loss == 'distance+auto-correlation':
+                    loss_value += (alpha * tl.loss_dot_product_v2(y_pred=y_pred, true_pred=true_pred, temperature=temperature) + \
+                                   beta * tl.auto_correlation(y_pred=y_pred, lam=lam) + tl.auto_correlation(y_pred=true_pred, lam=lam))
                             
-                # elif contrast_loss == 'signal_distance+auto-correlation':
-                #     loss_value += (alpha * tl.loss_dot_product_v2(y_pred=y_pred, true_pred=true_pred, axis=0, temperature=temperature) + \
-                #                    beta * tl.auto_correlation(y_pred=y_pred, lam=lam) + tl.auto_correlation(y_pred=true_pred, lam=lam))
+                elif contrast_loss == 'signal_distance+auto-correlation':
+                    loss_value += (alpha * tl.loss_dot_product_v2(y_pred=y_pred, true_pred=true_pred, axis=0, temperature=temperature) + \
+                                   beta * tl.auto_correlation(y_pred=y_pred, lam=lam) + tl.auto_correlation(y_pred=true_pred, lam=lam))
                             
-                # elif contrast_loss == 'cross-correlation+auto-correlation':
-                #     loss_value += (alpha * tl.cross_correlation(y_pred=y_pred, true_pred=true_pred, lam=lam) + \
-                #                    beta * tl.auto_correlation(y_pred=y_pred, lam=lam) + tl.auto_correlation(y_pred=true_pred, lam=lam))
+                elif contrast_loss == 'cross-correlation+auto-correlation':
+                    loss_value += (alpha * tl.cross_correlation(y_pred=y_pred, true_pred=true_pred, lam=lam) + \
+                                   beta * tl.auto_correlation(y_pred=y_pred, lam=lam) + tl.auto_correlation(y_pred=true_pred, lam=lam))
                             
-                # elif contrast_loss == 'cross-correlation':
-                #     loss_value += tl.cross_correlation(y_pred=y_pred, true_pred=true_pred, lam=lam)
+                elif contrast_loss == 'cross-correlation':
+                    loss_value += tl.cross_correlation(y_pred=y_pred, true_pred=true_pred, lam=lam)
+
             optimizer.zero_grad()
             loss_value.backward()
             optimizer.step()
@@ -280,7 +277,7 @@ def unsupervised_learning(features,
         
     logits = model(features, training = False)
     
-    return logits[0]
+    return logits[-1]
 
 
 def get_args():
@@ -366,7 +363,7 @@ def get_args():
             '-pe',
             '--pretext-num-epochs',
             type = int,
-            default = 70)
+            default = 30)
 
     parser.add_argument(
             '-pu',
@@ -402,7 +399,7 @@ def get_args():
     return parser.parse_args()
 
 
-if __name__ == '__main__':
+def get_representations(args, features, anchor_indexes, augmented_indexes):
     """
     Input Data
 
@@ -411,19 +408,11 @@ if __name__ == '__main__':
     features
 
     """
-    args = get_args()
+    
 
-    features_path = os.path.join(args.dataset_dir, args.dataset + '.npz')
-    anchor_indecies_path = os.path.join(args.dataset_dir, args.dataset + '_anchor_indexes.npy')
-    augmented_indecies_path = os.path.join(args.dataset_dir, args.dataset + '_augmented_indexes.npy')
-
-    features = load_npz(features_path).toarray()
-    anchor_indexes = torch.from_numpy(np.load(anchor_indecies_path))
-    augmented_indexes = torch.from_numpy(np.load(augmented_indecies_path))
-
-    features = torch.tensor(features, dtype=torch.float32)
-    anchor_indexes = anchor_indexes.to(torch.int32)
-    augmented_indexes = augmented_indexes.to(torch.int32)
+    features = torch.tensor(features.toarray(), dtype=torch.float32)
+    anchor_indexes = torch.tensor(anchor_indexes, dtype=torch.int32)
+    augmented_indexes = torch.tensor(augmented_indexes, dtype=torch.int32)
 
     model = MLPModel(input_units = features.shape[1],
                  layer_units = args.pretext_hidden_units,
@@ -451,12 +440,8 @@ if __name__ == '__main__':
                                         learning_rate = args.pretext_learning_rate,
                                         alpha = args.alpha,
                                         beta = args.beta)
-    
-    file_path = 'representations.pt'
 
-    torch.save(representations, file_path)
-
-    print("Save Successful~")
+    return representations
 
 
 
