@@ -1,4 +1,4 @@
-from osm_graph import osm_graph_from_box
+from road_dataset.osm_graph import osm_graph_from_box
 from sklearn.metrics.pairwise import cosine_similarity
 from scipy.sparse import csr_matrix, save_npz
 import argparse

@@ -1,16 +1,20 @@
-from osm_graph import osm_graph_from_box
+from road_dataset.osm_graph import osm_graph_from_box
 from sklearn.metrics.pairwise import cosine_similarity
 from scipy.sparse import csr_matrix, save_npz
 import argparse
 import os
+from sklearn.metrics.cluster import normalized_mutual_info_score
 import numpy as np
-import negative_free_unsupervised_representation_learning_main as NF_n2n
+import model.model_N2N as NF_n2n
 import sklearn.cluster as clu
 from sklearn.metrics import silhouette_score
 from sklearn.metrics import calinski_harabasz_score
 from sklearn.metrics import davies_bouldin_score
 import torch
 import tools as tl
+import networkx as nx
+from input_data import load_dataset, load_road_dataset
+from model.model_N2N import unsupervised_learning_2
 
 def get_args():
     parser = argparse.ArgumentParser()
@@ -19,12 +23,11 @@ def get_args():
         '-d', 
         '--dataset',
         type = str,
-        default = 'Xian')
+        default = 'Cora')
     
     parser.add_argument(
-        '--dataset-dir',
-        type = str,
-        default='dataset')
+        '--use_road_dataset',
+        action='store_true')
     
     parser.add_argument(
         '-n', 
@@ -72,7 +75,6 @@ def get_args():
             type = float,
             default = 0.0)
 
-
     parser.add_argument(
             '-t',
             '--temperature',
@@ -95,7 +97,7 @@ def get_args():
             '-zi',
             '--ZCA-iteration',
             type = int,
-            default = 4)
+            default = 20)
 
     parser.add_argument(
             '-zt',
@@ -119,7 +121,7 @@ def get_args():
             '-pe',
             '--pretext-num-epochs',
             type = int,
-            default = 30)
+            default = 100)
 
     parser.add_argument(
             '-pu',
@@ -152,11 +154,6 @@ def get_args():
             type = float,
             default = 0.001)
     
-    parser.add_argument(
-            '--clusters',
-            type = int,
-            default = 10)
-    
     return parser.parse_args()
 
 
@@ -164,37 +161,34 @@ if __name__ == '__main__':
 
     args = get_args()
 
-    north, south, east, west = args.north, args.south, args.east, args.west
+    args.use_road_dataset = False
 
-    # Data Preprocess
-    graph = osm_graph_from_box(north, south, east, west)
-    graph.init_graph()
-    graph.merge_road()
+    if args.use_road_dataset:
+        north, south, east, west = args.north, args.south, args.east, args.west
+        adj, sim = load_road_dataset(north, south, east, west)
+        anchor_indexes, augmented_indexes = tl.get_positive_samples(sim, threshold = 0.5)
+        feat = adj
 
-    adj_matrix = graph.get_merged_adj_matrix()
-    sim_adj_matrix = graph.get_similarity_of_adj_matrix()
+    else:
+        feat, adj, label = load_dataset(args.dataset)
+        anchor_indexes, augmented_indexes = tl.get_positive_samples(adj)
 
-    anchor_indexes, augmented_indexes = tl.get_positive_samples(sim_adj_matrix, threshold = 0.5)
+        label = np.argmax(label, axis = 1)
 
-    # Calculating the representation.
-    # representation_adj = NF_n2n.get_representations(args, adj_matrix).cpu().detach().numpy()
-    representation_sim = NF_n2n.get_representations(args, adj_matrix, anchor_indexes, augmented_indexes).cpu().detach().numpy()
+        evaluate_method = [normalized_mutual_info_score,
+                       tl.variation_of_information,
+                       tl.calculate_modularity,
+                       tl.conductance,
+                       tl.triangle_participation_ratio]
+        
+        print(1)
 
-    # torch.save(representation_adj, 'representation_adj.pt')
-    torch.save(representation_sim, 'representation_sim.pt')
+        eval = unsupervised_learning_2(feat,
+                          adj,
+                          anchor_indexes,
+                          augmented_indexes,
+                          args,
+                          evaluate_method,
+                          label)
 
-    # exit()
-
-    # cluster_1 = clu.KMeans(args.clusters)
-
-    # cluster_labels_1 = cluster_1.fit_predict(representation_adj)
-
-    cluster_2 = clu.KMeans(40, n_init = 10)
-
-    cluster_labels_2 = cluster_2.fit_predict(representation_sim)
-
-    silhouette_avg_ = silhouette_score(representation_sim, cluster_labels_2)
-    print("Silhouette Score:", silhouette_avg_)
-
-    for i in range(40):
-        graph.draw_merge_graph(cluster_labels_2, i)
+        np.save('eval.npy', eval)
